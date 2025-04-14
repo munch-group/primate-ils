@@ -1,34 +1,24 @@
+name: primate-ils
 channels:
-  - conda-forge
-  - kaspermunch
-  - gwforg
-  - micknudsen
-  - anaconda
+  - defaults
 dependencies:
-  - jupyterlab=4
-  - jupyterlab-quarto  
-  - nodejs
+  - jupyterlab
   - pytables
+  - ipympl
+  - chromwindow
   - scipy
-  - seaborn
-  - slurm-jupyter
+  - gwf=2.0
+  - notebook
+  - ipython
   - statsmodels
-  - scikit-learn
+  - tqdm
+  - seaborn
+  - nodejs
   - geneinfo
-  - git
-  - nbdime
-  - gwf
-  - gwf-utilization
-  - r-essentials
-  - pyyaml
-  - tabulate
-  - pycryptodome>3.10
-  - pbkdf2
-  - cryptography 
-  - git 
-  - nbdime
-  - missingno
-  - geneinfo # munch-group
-  - horizonplot # munch-group
-  - chromwindow # munch-group
-  - genominterv # munch-group
+  - ipyparallel
+  - git=2.40
+  - scikit-learn
+  - mpld3
+  - horizonplot
+  - genominterv
+prefix: /home/kmt/miniconda3/envs/primate-ils

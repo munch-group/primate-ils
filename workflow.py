@@ -1,336 +1,197 @@
-# %% [markdown]
-# ---
-# title: GWF workflow
-# execute:
-#   eval: false
-# ---
 
-# %% [markdown]
-r"""
 
-Example workflow using mapping between intput and output of each target. 
-It is made to show all the ways information may be passed through an workflow.
-
-```plaintext
-                        input_file1.txt                        input_file2.txt
-                                                                                                                
-file label:             'raw_path'                              'raw_path'                                
-                            |                                       |                                  
-                            |                                       |                         
-template:               uppercase_names                         uppercase_names                         
-                            |                                       |                          
-                            |                                       |                         
-file label:            'uppercased_path'                       'uppercased_path'                         
-                            |                                       |                          
-                            |                                       |                         
-template:                divide_names                            divide_names                         
-                         /          \                            /          \                          
-                        /            \                          /            \                         
-file label:    'filt_me_path'  'filt_other_path'      'filt_me_path'  'filt_other_path'                         
-                        \           /                           \           /                         
-                         \         /                             \         /                         
-template:                 unique_names                            unique_names                         
-                           |      |                                |      |  
-                           |      |                                |      |  
-file label:      'uniq_me_path'  'uniq_other_path'       'uniq_me_path'  'uniq_other_path'
-                            \            \                        /           /
-                             \            - - - - - - - - - - - / - - -     /  
-                              \  / - - - - - - - -- - - - - - -         \  /
-                               |                                          |                          
-file label:     (collected) 'uniq_me_paths'              (collected) 'uniq_other_paths'                         
-                               |                                          |
-                               |                                          |
-template:                   merge_names                                merge_names
-                               |                                          |                          
-                               |                                          |                          
-file label:                'output_path'                              'output_path'                         
-```
-
-"""
-
-# %% [markdown]
-"""
-## Imports and utility functions
-"""
-
-# %%
-import os
+import os, re
+from collections import defaultdict
 from pathlib import Path
+import pandas as pd
+
 from gwf import Workflow, AnonymousTarget
 from gwf.workflow import collect
-import glob
 
-# %% [markdown]
-"""
-Instantiate the workflow with the name of the project folder:
-"""
-
-# %%
-# instantiate the workflow
-gwf = Workflow(defaults={'account': 'your-project-folder-name'})
-
-
-# %% [markdown]
-"""
-Utility functions:
-"""
-
-# %%
-# utility function
-def modify_path(path, **kwargs):
-    """
-    Utility function for modifying file paths substituting
-    the directory (dir), base name (base), or file suffix (suffix).
-    """
-    for key in ['dir', 'base', 'suffix']:
-        kwargs.setdefault(key, None)
-    assert len(kwargs) == 3
-
-    par, name = os.path.split(path)
+def modpath(p, parent=None, base=None, suffix=None):
+    par, name = os.path.split(p)
     name_no_suffix, suf = os.path.splitext(name)
-    if type(kwargs['suffix']) is str:
-        suf = kwargs['suffix']
-    if kwargs['dir'] is not None:
-        par = kwargs['dir']
-    if kwargs['base'] is not None:
-        name_no_suffix = kwargs['base']
+    if type(suffix) is str:
+        suf = suffix
+    if parent is not None:
+        par = parent
+    if base is not None:
+        name_no_suffix = base
 
     new_path = os.path.join(par, name_no_suffix + suf)
-    if type(kwargs['suffix']) is tuple:
-        assert len(kwargs['suffix']) == 2
-        new_path, nsubs = re.subn(r'{}$'.format(kwargs['suffix'][0]), kwargs['suffix'][1], new_path)
+    if type(suffix) is tuple:
+        assert len(suffix) == 2
+        new_path, nsubs = re.subn(r'{}$'.format(suffix[0]), suffix[1], new_path)
         assert nsubs == 1, nsubs
     return new_path
 
 
-# %% [markdown]
-"""
-## Template functions:
-"""
-# %%
+def groupby_chrom(files, pattern='chr_?([XYxy\d+]+)'):
+    groups = defaultdict(list)
+    for f in files:
+        chrom = re.search(pattern, os.path.splitext(os.path.basename(f))[0]).group(1)
+        groups[chrom].append(f)
+    return groups
 
-# task template function
-def uppercase_names(raw_path): 
-    """
-    Formats names to uppercase.
-    """
-    # dir for files produces by task
-    output_dir = 'steps/upper_cased'
-    # path of output file
-    uppercased_path = modify_path(raw_path, dir=output_dir, suffix='_uppercased.txt')
 
-    # input specification
-    inputs = [raw_path]
-    # output specification mapping a label to each file
-    outputs = {'uppercased_path': uppercased_path}
-    # resource specification
-    options = {'memory': '8g', 'walltime': '00:10:00'} 
+def state_segments(posterior_file):
 
-    # tmporary output file path
-    tmp_uppercased_path = modify_path(raw_path, dir='/tmp')
+    stepsdir = 'steps/state_segments'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-    # commands to run in task (bash script)
-    # we write to a tmp file and move that to the output directory 
-    # only if the command succeds (the && takes care of that)
+    segment_file = modpath(posterior_file, parent=stepsdir, suffix='.h5')
+
+    inputs = {'posterior_file': posterior_file}
+    outputs = {'segment_file': segment_file}
+
+    options = {'memory': '40g', 'walltime': '01:00:00'} 
     spec = f"""
-    mkdir -p {output_dir}
-    cat {raw_path} | tr [:lower:] [:upper:] > {tmp_uppercased_path} &&
-        mv {tmp_uppercased_path} {uppercased_path}
+    mkdir -p {stepsdir}    
+    python scripts/state_segments.py {posterior_file} {segment_file}
     """
-    # return target
     return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
 
 
-# task template function
-def divide_names(uppercased_path, me=None):
-    """
-    Splits names into two files. One with my name and one with other names.
-    """
-    # uppercased version of the me argument
-    uppercased_me = me.upper()
+def trio_segments(state_segment_files, trio_segment_file):
 
-    # dir for files produces by task
-    output_dir = 'steps/filtered_names'
-    # path of output file with names matching me
-    filt_me_path = modify_path(uppercased_path, dir=output_dir, suffix=f'_{me}.txt')
-    # path of output file with other names
-    filt_other_path = modify_path(uppercased_path, dir=output_dir, suffix=f'_not_{me}.txt')
+    # python scripts/trio_segments.py gene_trees.h5 steps/state_segments/*_chr_22.h5
 
-    # input specification
-    inputs = [uppercased_path]
-    # output specification mapping a label to each file
-    outputs = {'filt_me_path': filt_me_path, 'filt_other_path': filt_other_path}
-    # resource specification
-    options = {'memory': '8g', 'walltime': '00:10:00'} 
+    stepsdir = 'steps/trio_segments'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-    # tmporary output file paths
-    tmp_filt_me_path = modify_path(filt_me_path, dir='/tmp')
-    tmp_filt_other_path = modify_path(filt_other_path, dir='/tmp')
+    inputs = {'state_segment_files': state_segment_files}
+    outputs = {'trio_segment_file': trio_segment_file}
 
-    # commands to run in task (bash script)
-    # we write to tmp files and move them to the output directory 
-    # only if the command succeds (the && takes care of that)
+    options = {'memory': '40g', 'walltime': '01:00:00'} 
     spec = f"""
-    mkdir -p {output_dir}    
-    grep {uppercased_me} {uppercased_path} > {tmp_filt_me_path} &&  
-        grep -v {uppercased_me} {uppercased_path} > {tmp_filt_other_path} &&  
-        mv {tmp_filt_me_path} {filt_me_path} &&  
-        mv {tmp_filt_other_path} {filt_other_path}
+    mkdir -p {stepsdir}    
+    python scripts/trio_segments.py {trio_segment_file} {state_segment_files}
     """
-    # return target
     return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
 
 
-# task template function
-def unique_names(filt_me_path, filt_other_path): 
-    """
-    Extracts unique names from a file.
-    """
-    # dir for files produces by task
-    output_dir = 'steps/unique_names'
-    # path of output file with unique names matching me
-    uniq_me_path = modify_path(filt_me_path, dir=output_dir, suffix='_unique.txt')
-    # path of output file with unique other names
-    uniq_other_path = modify_path(filt_other_path, dir=output_dir, suffix='_unique.txt')
+def ils_in_windows(segment_file):
 
-    # input specification
-    inputs = [filt_me_path, filt_other_path]
-    # output specification mapping a label to each file
-    outputs = {'unique_me_path': uniq_me_path, 'unique_other_path': uniq_other_path}
-    # resource specification
-    options = {'memory': '8g', 'walltime': '00:10:00'} 
+    stepsdir = 'steps/ils_in_windows'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-    # tmporary output file paths
-    tmp_uniq_me_path = modify_path(uniq_me_path, dir='/tmp')
-    tmp_uniq_other_path = modify_path(uniq_other_path, dir='/tmp')
+    window_file = modpath(segment_file, parent=stepsdir, suffix='.h5')
 
-    # commands to run in task (bash script)
-    # we write to tmp files and move them to the output directory 
-    # only if the command succeds (the && takes care of that)
+    inputs = {'segment_file': segment_file}
+    outputs = {'window_file': window_file}
+
+    options = {'memory': '8g', 'walltime': '01:00:00'} 
     spec = f"""
-    mkdir -p {output_dir}    
-    sort {filt_me_path} | uniq > {tmp_uniq_me_path} && 
-        sort {filt_other_path} | uniq > {tmp_uniq_other_path} && 
-        mv {tmp_uniq_me_path} {uniq_me_path} && 
-        mv {tmp_uniq_other_path} {uniq_other_path}
+    mkdir -p {stepsdir}
+    python scripts/ils_in_windows.py {segment_file} {window_file}
     """
-    # return target
     return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
 
 
-# task template function
-def merge_names(paths, output_path): 
-    """
-    Merges names from many files.
-    """
-    # dir for files produces by task
-    output_dir = modify_path(output_path, base='', suffix='')
+def low_ils_regions(window_file):
 
-    # input specification
-    inputs = [paths]
-    # output specification mapping a label to the file
-    outputs = {'path': output_path}
+    stepsdir = 'steps/low_ils_regions'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-    # tmporary output file path
-    tmp_output_path =  modify_path(output_path, dir='/tmp')
+    low_ils_file = modpath(window_file, parent=stepsdir, suffix='.csv')
 
-    # resource specification
-    options = {'memory': '8g', 'walltime': '00:10:00'} 
+    inputs = {'window_file': window_file}
+    outputs = {'low_ils_file': low_ils_file}
 
-    # commands to run in task (bash script)
-    # we write to tmp files and move them to the output directory 
-    # only if the command succeds (the && takes care of that)
+    options = {'memory': '8g', 'walltime': '01:00:00'} 
     spec = f"""
-    mkdir -p {output_dir}
-    cat {' '.join(paths)} > {tmp_output_path} && 
-        mv {tmp_output_path} {output_path}
+    mkdir -p {stepsdir}
+    python scripts/low_ils_regions.py {window_file} {low_ils_file}
     """
-    # return target
-    return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
-
-# task template function
-def run_notebook(path, dependencies, memory='8g', walltime='00:10:00', cores=1):    
-    """
-    Executes a notebook inplace and saves the output.
-    """
-    # path of output sentinel file
-    sentinel = modify_path(path, base=f'.{str(Path(path).name)}', suffix='.sentinel')
-    # sentinel = path.parent / f'.{path.name}'
-
-    # input specification
-    inputs = [path] + dependencies
-    # output specification mapping a label to each file
-    outputs = {'sentinel': sentinel}
-    # resource specification
-    options = {'memory': memory, 'walltime': walltime, 'cores': cores} 
-
-    # commands to run in task (bash script)
-    spec = f"""
-    jupyter nbconvert --to notebook --execute --inplace {path} && touch {sentinel}
-    """
-    # return target
     return AnonymousTarget(inputs=inputs, outputs=outputs, options=options, spec=spec)
 
 
-# %% [markdown]
-"""
-## Workflow:
-"""
+def workflow(working_dir=os.getcwd(), defaults={}, input_files=[]):
 
-# %%
+    gwf = Workflow(working_dir=working_dir, defaults=defaults)
 
-# instantiate the workflow
-gwf = Workflow(defaults={'account': 'your-project-folder-name'})
+    # dict of targets as info for other workflows
+    targets = defaultdict(list)
 
-# input files for workflow
-input_file_names = ['data/input_file1.txt', 'data/input_file2.txt']
+    # compute state segments
+    targets_state_segments = gwf.map(state_segments, input_files)
+    targets['segments'] = targets_state_segments
 
-# workflow parameter
-myname = 'Kasper'
+    # compute ils in windows
+    targets_ils_in_windows = gwf.map(ils_in_windows, targets_state_segments.outputs)
+    targets['windows'] = targets_ils_in_windows
 
-# run an uppercase_names task for each input file
-uppercase_names_targets = gwf.map(uppercase_names, input_file_names)
+    stepsdir = 'steps/merge_ils_data'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-# run an divide_names task for each output file from uppercase_names
-filter_names_targets = gwf.map(divide_names, uppercase_names_targets.outputs, extra=dict(me=myname))
+    ils_window_files = collect(targets_ils_in_windows.outputs, ['window_file'])['window_files']
+    merged_ils_file = os.path.join(stepsdir, 'merged_ils_data.h5')
+    input_args = ' '.join(ils_window_files)
+    target = gwf.target('merge_ils_data', memory='36g', walltime='01:00:00', inputs=ils_window_files, outputs=[merged_ils_file]) << f"""
+    mkdir -p {stepsdir}
+    python scripts/merge_hdf_files.py {input_args} {merged_ils_file}
+    """
+    targets['merge_ils_data'] = [merged_ils_file]
 
-# run an unique_names task for each output file from divide_names
-unique_names_targets = gwf.map(unique_names, filter_names_targets.outputs)
+    # compute low ils regions
+    targets_low_ils_regions = gwf.map(low_ils_regions, targets_ils_in_windows.outputs)
+    targets['regions'] = targets_low_ils_regions
 
-# collect the outputs labelled 'unique_me_path' from all the outputs of unique_names 
-collected_outputs = collect(unique_names_targets.outputs, ['unique_me_path'])
+    stepsdir = 'steps/merge_low_data'
+    # if not os.path.exists(stepsdir):
+    #     os.makedirs(stepsdir)
 
-# create a single task to merge all those files into one
-merge_me_target = gwf.target_from_template(
-    'merge_not_me_name_files',
-    merge_names(collected_outputs['unique_me_paths'], "results/merged_me_names.txt")
-    )
+    low_ils_region_files = collect(targets_low_ils_regions.outputs, ['low_ils_file'])['low_ils_files']
 
-# collect the outputs labelled 'unique_other_path' from all the outputs of unique_names 
-collected_outputs = collect(unique_names_targets.outputs, ['unique_other_path'])
+    merged_low_region_file = os.path.join(stepsdir, 'merged_low_ils_regions.csv')
 
-# create a single task to merge all those files into one
-merge_other_target = gwf.target_from_template(
-    'merge_me_name_files',
-    merge_names(collected_outputs['unique_other_paths'], "results/merged_not_me_names.txt")
-    )
+    input_args = ' '.join(low_ils_region_files)
+    target = gwf.target('merge_low_ils_regions', memory='36g', walltime='01:00:00', inputs=low_ils_region_files, outputs=[merged_low_region_file]) << f"""
+    mkdir -p {stepsdir}
+    python scripts/merge_csv_files.py {input_args} {merged_low_region_file}
+    """
+    targets['merge_regions'] = targets_low_ils_regions
 
-# make notebooks depend on all output files from workflow
-notebook_dependencies = []
-for x in gwf.targets.values():
-    outputs = x.outputs
-    if type(outputs) is dict:
-        for o in outputs.values():
-            notebook_dependencies.append(o)
-    elif type(outputs) is list:
-        notebook_dependencies.extend(outputs)
-
-#  run notebooks in sorted order nb01_, nb02_, ...
-for path in glob.glob('notebooks/*.ipynb'):
-    target = gwf.target_from_template(
-        os.path.basename(path), run_notebook(path, notebook_dependencies))
-    # make notebooks depend on all previous notebooks
-    notebook_dependencies.append(target.outputs['sentinel'])
+    state_segment_files = collect(targets_state_segments.outputs, ['segment_file'])['segment_files']
 
 
-# %%
+
+    # for chrom, input_files in groupby_chrom(state_segment_files).items():
+    #     output_file_name = f'XXXXXXXXXX'
+    #     gwf.target_from_template(
+    #     name=f'tree_segments_{chrom}',
+    #     trio_segments(
+    #         state_segment_files=input_files,
+    #         trio_segment_file=output_file_name
+    #     )
+    # )
+
+    return gwf, targets
+
+
+####################################################################
+# Use code like this to run this as standalone workflow: 
+####################################################################
+
+# data_dir = '/home/kmt/Primategenomes/data/final_tables'
+# state_posterior_files = sorted(Path(data_dir).glob('**/*.HDF'))
+# gwf, codeml_targets  = workflow(working_dir=working_dir, 
+#                                     defaults={'account': 'xy-drive'},
+#                                     input_files=state_posterior_files)
+
+####################################################################
+# Use code like this to run this as a submodule workflow: 
+####################################################################
+
+# data_dir = '/home/kmt/Primategenomes/data/final_tables'
+# state_posterior_files = sorted(Path(data_dir).glob('**/*.HDF'))
+# ils = importlib.import_module('primate-ils.workflow')
+# gwf, codeml_targets  = ils.workflow(working_dir=working_dir, 
+#                                     defaults={'account': 'xy-drive'},
+#                                     input_files=state_posterior_files)
+# globals()['ils'] = gwf
