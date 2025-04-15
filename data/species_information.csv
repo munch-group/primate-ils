@@ -1,0 +1,52 @@
+﻿ID,Updated_species,Species,Group
+1,Homo sapiens,Homo sapiens,ape
+2,Pan troglodytes,Pan troglodytes,ape
+3,Pan paniscus,Pan paniscus,ape
+4,Gorilla gorilla,Gorilla gorilla,ape
+5,Pongo abelii,Pongo abelii,ape
+6,Pongo pygmaeus,Pongo pygmaeus,ape
+7,Nomascus siki,Nomascus leucogenys,ape
+8,Symphalangus syndactylus,Symphalangus syndactylus,ape
+9,Hoolock leuconedys,Hoolock hoolock,ape
+10,Hylobates pileatus,Hylobates lar,ape
+11,Macaca mulatta,Macaca mulatta,old world monkey
+12,Macaca assamensis,Macaca assamensis,old world monkey
+13,Macaca nemestrina,Macaca nemestrina,old world monkey
+14,Macaca silenus,Macaca silenus,old world monkey
+15,Papio hamadryas,Papio hamadryas,old world monkey
+16,Papio anubis,Papio anubis,old world monkey
+17,Lophocebus aterrimus,Lophocebus aterrimus,old world monkey
+18,Theropithecus gelada,Theropithecus gelada,old world monkey
+19,Mandrillus sphinx,Mandrillus sphinx,old world monkey
+20,Mandrillus leucophaeus,Mandrillus leucophaeus,old world monkey
+21,Cercocebus atys,Cercocebus atys,old world monkey
+22,Cercopithecus albogularis,Cercopithecus mitis,old world monkey
+23,Cercopithecus mona,Cercopithecus mona,old world monkey
+24,Chlorocebus aethiops,Chlorocebus aethiops,old world monkey
+25,Chlorocebus sabaeus,Chlorocebus sabaeus,old world monkey
+26,Erythrocebus patas,Erythrocebus patas,old world monkey
+27,Trachypithecus crepusculus,Trachypithecus phayrei,old world monkey
+28,Pygathrix nigripes,Pygathrix nemaeus,old world monkey
+29,Rhinopithecus strykeri,Rhinopithecus strykeri,old world monkey
+30,Rhinopithecus roxellana,Rhinopithecus roxellana,old world monkey
+31,Piliocolobus tephrosceles,Piliocolobus tephrosceles,old world monkey
+32,Colobus guereza,Colobus guereza,old world monkey
+33,Colobus angolensis,Colobus angolensis,old world monkey
+34,Callithrix jacchus,Callithrix jacchus,new world monkey
+35,Saguinus midas,Saguinus midas,new world monkey
+36,Aotus nancymaae,Aotus nancymaae,new world monkey
+37,Sapajus apella,Sapajus apella,new world monkey
+38,Cebus albifrons,Cebus albifrons,new world monkey
+39,Ateles geoffroyi,Ateles fusciceps,new world monkey
+40,Pithecia pithecia,Pithecia pithecia,new world monkey
+41,Microcebus murinus,Microcebus murinus,prosimii
+42,Prolemur simus,Prolemur simus,prosimii
+43,Lemur catta,Lemur catta,prosimii
+44,Daubentonia madagascariensis,Daubentonia madagascariensis,prosimii
+45,Loris tardigradus,Loris tardigradus,prosimii
+46,Nycticebus pygmaeus,Nycticebus pygmaeus,prosimii
+47,Nycticebus bengalensis,Nycticebus bengalensis,prosimii
+48,Galago moholi,Galago moholi,prosimii
+49,Otolemur garnettii,Otolemur garnettii,prosimii
+,,,
+,,,
